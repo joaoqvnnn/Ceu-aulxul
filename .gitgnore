@@ -1,0 +1,4 @@
+*.db
+formulario_*.pdf
+recebido_*.pdf
+__pycache__/
