@@ -15,6 +15,8 @@ PORT = int(os.environ.get("PORT", 8080))
 DB = "usuarios.db"
 NAME, EMAIL, WAIT_PDF = range(3)
 
+
+# ---------- Banco de dados ----------
 def init_db():
     conn = sqlite3.connect(DB)
     conn.execute("""CREATE TABLE IF NOT EXISTS usuarios (
@@ -25,6 +27,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def save_user(user_id, nome, email):
     conn = sqlite3.connect(DB)
     conn.execute(
@@ -34,6 +37,7 @@ def save_user(user_id, nome, email):
     conn.commit()
     conn.close()
 
+
 def get_user(user_id):
     conn = sqlite3.connect(DB)
     row = conn.execute(
@@ -42,28 +46,45 @@ def get_user(user_id):
     conn.close()
     return row
 
+
+# ---------- Geração do PDF com campos preenchíveis ----------
 def criar_pdf(path, nome, email):
     c = canvas.Canvas(path, pagesize=A4)
     w, h = A4
+
     c.setFont("Helvetica-Bold", 18)
     c.drawString(50, h - 60, "Formulário de Cadastro")
+
     c.setFont("Helvetica", 12)
     c.drawString(50, h - 110, "Nome:")
     c.drawString(150, h - 110, nome)
+
     c.drawString(50, h - 140, "E-mail:")
     c.drawString(150, h - 140, email)
+
     c.drawString(50, h - 190, "Telefone:")
-    c.acroForm.textfield(name="telefone", x=150, y=h - 200, width=250, height=22,
-                         borderStyle="inset", forceBorder=True, fontSize=12)
+    c.acroForm.textfield(
+        name="telefone", x=150, y=h - 200, width=250, height=22,
+        borderStyle="inset", forceBorder=True, fontSize=12,
+    )
+
     c.drawString(50, h - 240, "Endereço:")
-    c.acroForm.textfield(name="endereco", x=150, y=h - 250, width=350, height=22,
-                         borderStyle="inset", forceBorder=True, fontSize=12)
+    c.acroForm.textfield(
+        name="endereco", x=150, y=h - 250, width=350, height=22,
+        borderStyle="inset", forceBorder=True, fontSize=12,
+    )
+
     c.drawString(50, h - 290, "Observações:")
-    c.acroForm.textfield(name="obs", x=50, y=h - 420, width=450, height=120,
-                         borderStyle="inset", forceBorder=True, fontSize=12,
-                         fieldFlags="multiline")
+    c.acroForm.textfield(
+        name="obs", x=50, y=h - 420, width=450, height=120,
+        borderStyle="inset", forceBorder=True, fontSize=12,
+        fieldFlags="multiline",
+    )
+
     c.save()
 
+
+# ---------- Handlers ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
@@ -75,11 +96,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await enviar_formulario(update, context)
         return WAIT_PDF
+
     await update.message.reply_text(
         "Olá! 👋 Vou fazer seu cadastro rapidinho.\n\nQual é o seu *nome*?",
         parse_mode="Markdown",
     )
     return NAME
+
 
 async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["nome"] = update.message.text.strip()
@@ -89,10 +112,12 @@ async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return EMAIL
 
+
 async def receber_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     email = update.message.text.strip()
     nome = context.user_data["nome"]
     user_id = update.effective_user.id
+
     save_user(user_id, nome, email)
     await update.message.reply_text(
         f"Perfeito, {nome}! Cadastro salvo com sucesso. ✅\n\n"
@@ -101,15 +126,18 @@ async def receber_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await enviar_formulario(update, context)
     return WAIT_PDF
 
+
 async def enviar_formulario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
     if not user:
         await update.message.reply_text("Você ainda não está cadastrado. Use /start.")
         return
+
     nome, email = user
     path = f"formulario_{user_id}.pdf"
     criar_pdf(path, nome, email)
+
     with open(path, "rb") as f:
         await update.message.reply_document(
             document=f,
@@ -122,15 +150,19 @@ async def enviar_formulario(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     os.remove(path)
 
+
 async def receber_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
     user_id = update.effective_user.id
+
     if not doc.file_name.lower().endswith(".pdf"):
         await update.message.reply_text("Por favor, envie um arquivo PDF. 📎")
         return WAIT_PDF
+
     file = await doc.get_file()
     destino = f"recebido_{user_id}.pdf"
     await file.download_to_drive(destino)
+
     user = get_user(user_id)
     nome = user[0] if user else "amigo"
     await update.message.reply_text(
@@ -140,13 +172,30 @@ async def receber_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return WAIT_PDF
 
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Operação cancelada. Use /start quando quiser.")
     return ConversationHandler.END
 
+
+# ---------- Main ----------
 def main():
     init_db()
+
+    # Debug: mostra o que está chegando das variáveis de ambiente
+    print("=== INICIANDO BOT ===")
+    print("TOKEN carregado:", "SIM" if TOKEN else "NÃO (!!! verifique BOT_TOKEN) !!!")
+    print("WEBHOOK_URL:", WEBHOOK_URL)
+    print("PORT:", PORT)
+    print("=====================")
+
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN não definido nas variáveis de ambiente!")
+    if not WEBHOOK_URL:
+        raise RuntimeError("WEBHOOK_URL não definido nas variáveis de ambiente!")
+
     app = Application.builder().token(TOKEN).build()
+
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -157,12 +206,15 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     app.add_handler(conv)
+
+    print(f"Iniciando webhook em {WEBHOOK_URL}/webhook (porta {PORT})...")
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path="webhook",
         webhook_url=f"{WEBHOOK_URL}/webhook",
     )
+
 
 if __name__ == "__main__":
     main()
